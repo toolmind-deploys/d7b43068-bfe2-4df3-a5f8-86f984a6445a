@@ -1,14 +1,8 @@
 import { Card } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Select,
   SelectContent,
@@ -16,9 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { ExclamationTriangleIcon, EllipsisHorizontalIcon } from '@heroicons/react/24/outline';
 
 async function getDashboardData() {
   try {
@@ -31,18 +23,48 @@ async function getDashboardData() {
   }
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusIndicator({ status }: { status: string }) {
   const statusStyles = {
-    completed: 'bg-green-100 text-green-800',
-    'in-progress': 'bg-blue-100 text-blue-800',
-    pending: 'bg-yellow-100 text-yellow-800',
-    cancelled: 'bg-red-100 text-red-800',
+    completed: 'bg-green-500',
+    'in-progress': 'bg-blue-500',
+    pending: 'bg-yellow-500',
+    cancelled: 'bg-red-500',
   };
 
   return (
-    <Badge className={statusStyles[status as keyof typeof statusStyles] || 'bg-gray-100 text-gray-800'}>
+    <Badge variant="secondary" className="flex items-center gap-2">
+      <div className={`w-2 h-2 rounded-full ${statusStyles[status as keyof typeof statusStyles] || 'bg-gray-500'}`} />
       {status}
     </Badge>
+  );
+}
+
+function ListItem({ item }: { item: any }) {
+  return (
+    <div className="p-4 border-b hover:bg-slate-50 transition-colors">
+      <div className="flex items-center justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-4">
+            <h3 className="text-sm font-medium truncate">{item.title}</h3>
+            <StatusIndicator status={item.status} />
+          </div>
+          <p className="mt-1 text-sm text-gray-500 line-clamp-2">{item.description}</p>
+          
+          <div className="mt-2 flex items-center gap-4 text-sm text-gray-500">
+            <span>Assigned to: {item.assignedTo}</span>
+            <span>•</span>
+            <span>Due: {new Date(item.date).toLocaleDateString()}</span>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2 ml-4">
+          <Button variant="outline" size="sm">Edit</Button>
+          <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
+            Delete
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -71,7 +93,7 @@ export default async function DashboardPage() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex-1">
               <Input
-                placeholder="Search..."
+                placeholder="Search items..."
                 className="max-w-sm"
               />
             </div>
@@ -91,43 +113,19 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Assigned To</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.items?.map((item: any) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.title}</TableCell>
-                    <TableCell>{item.description}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={item.status} />
-                    </TableCell>
-                    <TableCell>{new Date(item.date).toLocaleDateString()}</TableCell>
-                    <TableCell>{item.assignedTo}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm">Edit</Button>
-                        <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
-                          Delete
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="rounded-md border divide-y">
+            {data.items?.length > 0 ? (
+              data.items.map((item: any) => (
+                <ListItem key={item.id} item={item} />
+              ))
+            ) : (
+              <div className="p-8 text-center text-gray-500">
+                No items found
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between pt-4">
             <div className="text-sm text-muted-foreground">
               Showing {data.items?.length || 0} items
             </div>
