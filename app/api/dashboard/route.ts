@@ -5,54 +5,52 @@ import { NextRequest, NextResponse } from 'next/server';
 initFirebaseAdminSDK();
 const fsdb = firestore();
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Get users count
-    const usersSnapshot = await fsdb.collection('users').count().get();
-    const totalUsers = usersSnapshot.data().count;
+    const searchParams = request.nextUrl.searchParams;
+    const status = searchParams.get('status');
+    const search = searchParams.get('search');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
 
-    // Get projects statistics
-    const projectsRef = fsdb.collection('projects');
-    const projectsSnapshot = await projectsRef.get();
-    const projects = projectsSnapshot.docs.map(doc => doc.data());
-    const activeProjects = projects.filter(project => project.status === 'active').length;
+    let query = fsdb.collection('dashboard_items');
 
-    // Get tasks statistics
-    const tasksRef = fsdb.collection('tasks');
-    const tasksSnapshot = await tasksRef.get();
-    const tasks = tasksSnapshot.docs.map(doc => doc.data());
-    const totalTasks = tasks.length;
-    const completedTasks = tasks.filter(task => task.status === 'completed').length;
-    const completionRate = totalTasks > 0 
-      ? Math.round((completedTasks / totalTasks) * 100)
-      : 0;
+    // Apply status filter if provided
+    if (status && status !== 'all') {
+      query = query.where('status', '==', status);
+    }
 
-    // Get recent activity
-    const activityRef = fsdb.collection('activity');
-    const recentActivitySnapshot = await activityRef
-      .orderBy('timestamp', 'desc')
-      .limit(5)
-      .get();
+    // Apply search if provided
+    if (search) {
+      query = query.where('title', '>=', search)
+                  .where('title', '<=', search + '\uf8ff');
+    }
 
-    const recentActivity = recentActivitySnapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        title: data.title,
-        description: data.description,
-        time: data.timestamp.toDate().toLocaleString(),
-        type: data.type
-      };
-    });
+    // Apply pagination
+    query = query.orderBy('date', 'desc')
+                .limit(limit)
+                .offset((page - 1) * limit);
+
+    const snapshot = await query.get();
+    
+    const items = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      date: doc.data().date?.toDate().toISOString()
+    }));
+
+    // Get total count for pagination
+    const totalSnapshot = await fsdb.collection('dashboard_items').count().get();
+    const total = totalSnapshot.data().count;
 
     return NextResponse.json({
-      stats: {
-        totalUsers,
-        activeProjects,
-        totalTasks,
-        completionRate
-      },
-      recentActivity
+      items,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
     });
   } catch (error) {
     console.error('Error fetching dashboard data:', error);
@@ -66,33 +64,94 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { type, title, description } = body;
+    const { title, description, status, assignedTo } = body;
 
-    if (!type || !title) {
+    if (!title) {
       return NextResponse.json(
-        { error: 'Type and title are required' },
+        { error: 'Title is required' },
         { status: 400 }
       );
     }
 
-    const activityRef = fsdb.collection('activity');
-    const docRef = await activityRef.add({
-      type,
+    const dashboardRef = fsdb.collection('dashboard_items');
+    const docRef = await dashboardRef.add({
       title,
       description,
-      timestamp: firestore.Timestamp.now()
+      status,
+      assignedTo,
+      date: firestore.Timestamp.now()
     });
 
     return NextResponse.json({
       id: docRef.id,
-      type,
       title,
-      description
+      description,
+      status,
+      assignedTo,
+      date: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Error creating activity:', error);
+    console.error('Error creating dashboard item:', error);
     return NextResponse.json(
-      { error: 'Failed to create activity' },
+      { error: 'Failed to create dashboard item' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, ...updateData } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Item ID is required' },
+        { status: 400 }
+      );
+    }
+
+    const docRef = fsdb.collection('dashboard_items').doc(id);
+    await docRef.update({
+      ...updateData,
+      updatedAt: firestore.Timestamp.now()
+    });
+
+    return NextResponse.json({
+      id,
+      ...updateData
+    });
+  } catch (error) {
+    console.error('Error updating dashboard item:', error);
+    return NextResponse.json(
+      { error: 'Failed to update dashboard item' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Item ID is required' },
+        { status: 400 }
+      );
+    }
+
+    await fsdb.collection('dashboard_items').doc(id).delete();
+
+    return NextResponse.json({
+      id,
+      message: 'Item deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting dashboard item:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete dashboard item' },
       { status: 500 }
     );
   }
