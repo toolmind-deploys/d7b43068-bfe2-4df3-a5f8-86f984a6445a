@@ -7,15 +7,53 @@ const fsdb = firestore();
 
 export async function GET() {
   try {
-    const dashboardRef = fsdb.collection('dashboard_items');
-    const snapshot = await dashboardRef.get();
-    
-    const items = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    // Get users count
+    const usersSnapshot = await fsdb.collection('users').count().get();
+    const totalUsers = usersSnapshot.data().count;
 
-    return NextResponse.json({ items });
+    // Get projects statistics
+    const projectsRef = fsdb.collection('projects');
+    const projectsSnapshot = await projectsRef.get();
+    const projects = projectsSnapshot.docs.map(doc => doc.data());
+    const activeProjects = projects.filter(project => project.status === 'active').length;
+
+    // Get tasks statistics
+    const tasksRef = fsdb.collection('tasks');
+    const tasksSnapshot = await tasksRef.get();
+    const tasks = tasksSnapshot.docs.map(doc => doc.data());
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter(task => task.status === 'completed').length;
+    const completionRate = totalTasks > 0 
+      ? Math.round((completedTasks / totalTasks) * 100)
+      : 0;
+
+    // Get recent activity
+    const activityRef = fsdb.collection('activity');
+    const recentActivitySnapshot = await activityRef
+      .orderBy('timestamp', 'desc')
+      .limit(5)
+      .get();
+
+    const recentActivity = recentActivitySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        title: data.title,
+        description: data.description,
+        time: data.timestamp.toDate().toLocaleString(),
+        type: data.type
+      };
+    });
+
+    return NextResponse.json({
+      stats: {
+        totalUsers,
+        activeProjects,
+        totalTasks,
+        completionRate
+      },
+      recentActivity
+    });
   } catch (error) {
     console.error('Error fetching dashboard data:', error);
     return NextResponse.json(
@@ -28,33 +66,33 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { title, description, status } = body;
+    const { type, title, description } = body;
 
-    if (!title) {
+    if (!type || !title) {
       return NextResponse.json(
-        { error: 'Title is required' },
+        { error: 'Type and title are required' },
         { status: 400 }
       );
     }
 
-    const dashboardRef = fsdb.collection('dashboard_items');
-    const docRef = await dashboardRef.add({
+    const activityRef = fsdb.collection('activity');
+    const docRef = await activityRef.add({
+      type,
       title,
       description,
-      status,
-      createdAt: firestore.Timestamp.now()
+      timestamp: firestore.Timestamp.now()
     });
 
     return NextResponse.json({
       id: docRef.id,
+      type,
       title,
-      description,
-      status
+      description
     });
   } catch (error) {
-    console.error('Error creating dashboard item:', error);
+    console.error('Error creating activity:', error);
     return NextResponse.json(
-      { error: 'Failed to create dashboard item' },
+      { error: 'Failed to create activity' },
       { status: 500 }
     );
   }
